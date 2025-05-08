@@ -4,10 +4,12 @@ import type { Metadata } from "next"
 import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata: Metadata = {
-  title: "Green Energy Weather Station Dashboard",
+  title: "Smart Weather Station",
   description: "Sustainable Environmental Monitoring System",
-    generator: 'v0.dev'
-}
+  icons: {
+    icon: "https://img.icons8.com/3d-fluency/188/sustainability.png",
+  },
+};
 
 export default function RootLayout({
   children,
