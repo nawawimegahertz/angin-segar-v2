@@ -11,7 +11,7 @@ import Footer from "@/components/footer"
 // Konfigurasi ThingSpeak
 const THINGSPEAK_CHANNEL_ID = "2953765"
 const THINGSPEAK_API_KEY = "6097IQQ68AH3RF5N"
-const THINGSPEAK_API_URL = `https://api.thingspeak.com/channels/2621036/feeds/last.json?api_key=GGSK06LEDQOICPMJ`
+const THINGSPEAK_API_URL = `https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds/last.json?api_key=${THINGSPEAK_API_KEY}`
 
 interface SensorData {
   temperature: string
