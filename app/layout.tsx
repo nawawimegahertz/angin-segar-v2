@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Smart Weather Station",
   description: "Sustainable Environmental Monitoring System",
   icons: {
-    icon: "https://img.icons8.com/3d-fluency/188/sustainability.png",
+    icon: "https://img.icons8.com/3d-fluency/188/sustainability.png"
   },
 };
 
