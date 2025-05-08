@@ -8,11 +8,28 @@ import SensorCards from "@/components/sensor-cards"
 import AdditionalInfo from "@/components/additional-info"
 import Footer from "@/components/footer"
 
+// Konfigurasi ThingSpeak
+const THINGSPEAK_CHANNEL_ID = "2621036"
+const THINGSPEAK_API_KEY = "GGSK06LEDQOICPMJ"
+const THINGSPEAK_API_URL = `https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds/last.json?api_key=${THINGSPEAK_API_KEY}`
+
+interface SensorData {
+  temperature: string
+  humidity: string
+  windSpeed: string
+  windUnit: "km/h" | "m/s"
+  windMax: string
+  windMin: string
+  soilMoisture: string
+  soilTemp: string
+  soilStatus: string
+  soilStatusIcon: string
+}
+
 export default function Dashboard() {
   const { toast } = useToast()
   const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  const [sensorData, setSensorData] = useState({
+  const [sensorData, setSensorData] = useState<SensorData>({
     temperature: "--",
     humidity: "--",
     windSpeed: "--",
@@ -28,12 +45,7 @@ export default function Dashboard() {
 
   // Initialize audio element
   useEffect(() => {
-    // Create audio element only on client side
     audioRef.current = new Audio("/alarm.mp3")
-    audioRef.current.addEventListener("error", (e) => {
-      console.log("Audio error:", e)
-    })
-
     return () => {
       if (audioRef.current) {
         audioRef.current.pause()
@@ -42,133 +54,123 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Generate random sensor data
-  const generateSensorData = () => {
-    // Temperature data (15-35°C)
-    const temperature = (Math.random() * 20 + 15).toFixed(1)
+  // Fetch data dari ThingSpeak
+  const fetchSensorData = async () => {
+    try {
+      const response = await fetch(THINGSPEAK_API_URL)
+      if (!response.ok) throw new Error("Gagal mengambil data")
+      
+      const data = await response.json()
+      
+      // Parse dan format data
+      const tempValue = parseFloat(data.field1 || "0")
+      const temperature = isNaN(tempValue) ? "--" : Math.round(tempValue).toString()
 
-    // Humidity data (30-90%)
-    const humidity = (Math.random() * 60 + 30).toFixed(1)
+      const humValue = parseFloat(data.field2 || "0")
+      const humidity = isNaN(humValue) ? "--" : Math.round(humValue).toString()
 
-    // Wind speed data (0-30 km/h)
-    const windSpeed = (Math.random() * 30).toFixed(1)
-    const windMax = (Number.parseFloat(windSpeed) + 5).toFixed(1)
-    const windMin = Math.max(0, Number.parseFloat(windSpeed) - 3).toFixed(1)
+      const windSpeedMps = data.field3 || "0"
+      const windSpeedMpsValue = parseFloat(windSpeedMps)
+      const windSpeed = isNaN(windSpeedMpsValue) ? "0" : Math.round(windSpeedMpsValue * 3.6).toString()
 
-    // Soil moisture data (0-100%)
-    const soilMoisture = (Math.random() * 100).toFixed(1)
+      const soilMoistValue = parseFloat(data.field4 || "0")
+      const soilMoisture = isNaN(soilMoistValue) ? "--" : Math.round(soilMoistValue).toString()
 
-    // Soil status
-    let soilStatus, soilStatusIcon
-    if (Number.parseFloat(soilMoisture) < 20) {
-      soilStatus = "Very Dry"
-      soilStatusIcon = "alert-triangle"
-    } else if (Number.parseFloat(soilMoisture) < 40) {
-      soilStatus = "Dry"
-      soilStatusIcon = "droplet-off"
-    } else if (Number.parseFloat(soilMoisture) < 60) {
-      soilStatus = "Normal"
-      soilStatusIcon = "check-circle"
-    } else if (Number.parseFloat(soilMoisture) < 80) {
-      soilStatus = "Moist"
-      soilStatusIcon = "droplet"
-    } else {
-      soilStatus = "Very Wet"
-      soilStatusIcon = "umbrella"
+      // Update status tanah
+      const { soilStatus, soilStatusIcon } = getSoilStatus(parseFloat(soilMoisture))
+
+      // Update state
+      setSensorData(prev => ({
+        ...prev,
+        temperature,
+        humidity,
+        windSpeed,
+        soilMoisture,
+        soilStatus,
+        soilStatusIcon,
+        soilTemp: "25" // Update ke integer
+      }))
+
+      // Check kondisi bahaya
+      checkUnstableConditions(temperature, humidity, windSpeed)
+      
+    } catch (error) {
+      console.error("Error fetching data:", error)
+      toast({
+        title: "Koneksi Error",
+        description: "Gagal mengambil data dari sensor",
+        variant: "destructive"
+      })
     }
-
-    // Soil temperature (10-30°C)
-    const soilTemp = (Math.random() * 20 + 10).toFixed(1)
-
-    // Check for unstable conditions and trigger alarm/toast
-    checkUnstableConditions(temperature, humidity, windSpeed)
-
-    setSensorData({
-      temperature,
-      humidity,
-      windSpeed,
-      windUnit: sensorData.windUnit,
-      windMax,
-      windMin,
-      soilMoisture,
-      soilTemp,
-      soilStatus,
-      soilStatusIcon,
-    })
   }
 
-  // Check for unstable conditions
-  const checkUnstableConditions = (temperature, humidity, windSpeed) => {
+  // Toggle satuan kecepatan angin (diupdate untuk integer)
+  const toggleWindUnit = () => {
+    const { windSpeed, windUnit } = sensorData
+    const currentSpeed = parseFloat(windSpeed)
+    
+    if (windUnit === "km/h") {
+      const newSpeed = Math.round(currentSpeed / 3.6)
+      setSensorData(prev => ({
+        ...prev,
+        windSpeed: newSpeed.toString(),
+        windUnit: "m/s"
+      }))
+    } else {
+      const newSpeed = Math.round(currentSpeed * 3.6)
+      setSensorData(prev => ({
+        ...prev,
+        windSpeed: newSpeed.toString(),
+        windUnit: "km/h"
+      }))
+    }
+  }
+
+  /* Fungsi-fungsi lainnya tetap sama */
+  // Helper untuk status tanah
+  const getSoilStatus = (moisture: number) => {
+    if (moisture < 20) return { soilStatus: "Very Dry", soilStatusIcon: "alert-triangle" }
+    if (moisture < 40) return { soilStatus: "Dry", soilStatusIcon: "droplet-off" }
+    if (moisture < 60) return { soilStatus: "Normal", soilStatusIcon: "check-circle" }
+    if (moisture < 80) return { soilStatus: "Moist", soilStatusIcon: "droplet" }
+    return { soilStatus: "Very Wet", soilStatusIcon: "umbrella" }
+  }
+
+  // Sistem alarm
+  const checkUnstableConditions = (temperature: string, humidity: string, windSpeed: string) => {
     const tempNum = Number.parseFloat(temperature)
     const humidityNum = Number.parseFloat(humidity)
     const windNum = Number.parseFloat(windSpeed)
 
     let alarmTriggered = false
 
-    // Check temperature (too hot)
     if (tempNum > 30) {
-      toast({
-        title: "Temperature Warning",
-        description: `Temperature too high: ${temperature}°C`,
-        variant: "destructive",
-      })
+      toast({ title: "Temperature Warning", description: `Temperature too high: ${temperature}°C`, variant: "destructive" })
       alarmTriggered = true
     }
 
-    // Check humidity (too wet or too dry)
-    if (humidityNum > 80) {
-      toast({
-        title: "Humidity Warning",
-        description: `Humidity too high: ${humidity}%`,
-        variant: "destructive",
-      })
-      alarmTriggered = true
-    } else if (humidityNum < 40) {
-      toast({
-        title: "Humidity Warning",
-        description: `Humidity too low: ${humidity}%`,
-        variant: "destructive",
-      })
+    if (humidityNum > 80 || humidityNum < 40) {
+      toast({ title: "Humidity Warning", description: `Humidity: ${humidity}%`, variant: "destructive" })
       alarmTriggered = true
     }
 
-    // Check wind speed (too fast)
     if (windNum > 20) {
-      toast({
-        title: "Wind Speed Warning",
-        description: `Wind speed too high: ${windSpeed} ${sensorData.windUnit}`,
-        variant: "destructive",
-      })
+      toast({ title: "Wind Speed Warning", description: `Wind speed: ${windSpeed} ${sensorData.windUnit}`, variant: "destructive" })
       alarmTriggered = true
     }
 
-    // Play alarm if any condition is unstable
-    if (alarmTriggered && !alarmPlaying) {
-      playAlarm()
-    }
+    if (alarmTriggered && !alarmPlaying) playAlarm()
   }
 
-  // Play alarm sound
   const playAlarm = () => {
     if (audioRef.current) {
-      try {
-        audioRef.current.currentTime = 0
-        audioRef.current.play().catch((err) => {
-          console.error("Error playing audio:", err)
-        })
-        setAlarmPlaying(true)
-      } catch (error) {
-        console.error("Error playing alarm:", error)
-      }
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch(console.error)
+      setAlarmPlaying(true)
+      setTimeout(stopAlarm, 5000)
     }
-
-    // Reset alarm playing state after 5 seconds
-    setTimeout(() => {
-      stopAlarm()
-    }, 5000)
   }
 
-  // Stop alarm sound
   const stopAlarm = () => {
     if (audioRef.current) {
       audioRef.current.pause()
@@ -177,50 +179,20 @@ export default function Dashboard() {
     setAlarmPlaying(false)
   }
 
-  // Toggle wind speed unit
-  const toggleWindUnit = () => {
-    const { windSpeed, windMax, windMin, windUnit } = sensorData
-
-    if (windUnit === "km/h") {
-      // Convert to m/s
-      setSensorData({
-        ...sensorData,
-        windSpeed: (Number.parseFloat(windSpeed) / 3.6).toFixed(1),
-        windMax: (Number.parseFloat(windMax) / 3.6).toFixed(1),
-        windMin: (Number.parseFloat(windMin) / 3.6).toFixed(1),
-        windUnit: "m/s",
-      })
-    } else {
-      // Convert to km/h
-      setSensorData({
-        ...sensorData,
-        windSpeed: (Number.parseFloat(windSpeed) * 3.6).toFixed(1),
-        windMax: (Number.parseFloat(windMax) * 3.6).toFixed(1),
-        windMin: (Number.parseFloat(windMin) * 3.6).toFixed(1),
-        windUnit: "km/h",
-      })
-    }
-  }
-
-  // Initialize and update data
   useEffect(() => {
-    generateSensorData()
-
-    // Update sensor data every 5 seconds (simulate real-time updates)
-    const interval = setInterval(generateSensorData, 5000)
-
+    fetchSensorData()
+    const interval = setInterval(fetchSensorData, 20000)
     return () => clearInterval(interval)
   }, [])
 
+  // JSX tetap sama
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-green-100 dark:from-emerald-950 dark:to-green-900 transition-colors duration-300">
       <Header />
-
       <main className="container mx-auto px-4 py-8">
         <SensorCards sensorData={sensorData} toggleWindUnit={toggleWindUnit} />
         <AdditionalInfo sensorData={sensorData} />
       </main>
-
       <Footer />
       <Toaster />
     </div>
